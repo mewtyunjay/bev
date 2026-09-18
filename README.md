@@ -2,8 +2,9 @@
 
 Type a shell command or a natural-language request at your normal zsh prompt.
 Bev asks Jev which it is: commands run in the current shell, requests run headlessly
-with `codex exec` using `gpt-5.6-luna` and reasoning effort `none`. Output appears
-in the same terminal, then control returns to your shell. Uncertain results and
+with `codex exec` using `gpt-5.6-luna` and reasoning effort `none`. Only the final
+answer appears in the terminal; startup logs and progress are hidden. Failed runs
+show their diagnostics. Control then returns to your shell. Uncertain results and
 API failures leave your input editable.
 
 Go standard library only. Ghostty needs no configuration changes. The integration
@@ -66,7 +67,8 @@ codex exec --model gpt-5.6-luna -c model_reasoning_effort=none --skip-git-repo-c
 ```
 
 The command uses your current directory, works outside Git repositories, and returns
-to the shell when finished. Your other Codex settings still apply.
+to the shell when finished. Bev shows only its final answer on success, retaining
+error diagnostics for failed runs. Your other Codex settings still apply.
 
 | Input | Behavior |
 | --- | --- |
@@ -145,7 +147,8 @@ answer and probability distribution before returning a routing decision.
 Shell input is handed back to the original Enter widget. Codex input is escaped
 as one literal argument and handed back through that same widget, so `codex exec`
 runs in the foreground without opening the interactive interface. No generated
-command is evaluated. The resulting quoted
+command is evaluated. Codex's stderr is captured in a private temporary file and
+shown only on failure; the file is removed when the command exits. The resulting quoted
 Codex invocation is what the shell records in its normal command history.
 
 - Each classified line is sent to TypeSafe. Shell history, directory contents, and

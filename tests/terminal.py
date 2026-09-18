@@ -38,6 +38,12 @@ event = {"kind": "codex" if is_codex else "classify", "line": line,
 with open(os.environ["BEV_TEST_LOG"], "a") as f:
     f.write(json.dumps(event) + "\\n")
 if is_codex:
+    print("CODEX_NOISY_PROGRESS", file=sys.stderr)
+    if sys.argv[-1] == "explain failure":
+        print("ERROR: CODEX_REQUEST_FAILED", file=sys.stderr)
+        sys.exit(7)
+    if sys.argv[-1] == "explain interrupt":
+        time.sleep(10)
     print("CODEX_STUB_FINISHED")
 elif line.startswith("api-down"):
     print("bev: test API unavailable", file=sys.stderr)
@@ -62,6 +68,7 @@ else:
         if self.pid == 0:
             env = dict(os.environ, ZDOTDIR=str(directory), TERM="xterm-256color",
                        BEV_BIN=str(directory / "bev"), BEV_TEST_LOG=str(self.log),
+                       TMPDIR=str(directory),
                        PATH=str(directory) + os.pathsep + os.defpath)
             os.chdir(directory)
             os.execvpe("zsh", ["zsh", "-d", "-i"], env)
@@ -132,11 +139,29 @@ def check(plugins, vi):
             prompt = 'explain "quotes" \'apostrophes\' $(touch INJECTED) `touch INJECTED` ! & --help'
             terminal.send(prompt + "\r")
             event = terminal.event("codex", "args", CODEX_ARGS + [prompt])
-            assert event["tty"] == [True, True, True], event
+            assert event["tty"] == [True, True, False], event
             assert event["cwd"] == str(directory / "child"), event
             terminal.expect(b"CODEX_STUB_FINISHED")
             terminal.expect(b"BEV_TEST> ")
             assert not (directory / "child/INJECTED").exists()
+            assert b"CODEX_NOISY_PROGRESS" not in terminal.output
+            assert terminal.output.count(b"CODEX_STUB_FINISHED") == 1
+            assert not list(directory.glob("bev-codex.*"))
+
+            # Failed requests still explain the failure and preserve the exit code.
+            terminal.send("explain failure\r")
+            terminal.expect(b"ERROR: CODEX_REQUEST_FAILED")
+            terminal.expect(b"BEV_TEST> ")
+            terminal.run("print 'CODEX_EXIT_'$?", "\r\nCODEX_EXIT_7\r\n")
+            assert not list(directory.glob("bev-codex.*"))
+
+            # Interrupting Codex also removes its captured diagnostics.
+            terminal.send("explain interrupt\r")
+            terminal.event("codex", "args", CODEX_ARGS + ["explain interrupt"])
+            terminal.send("\x03")
+            terminal.expect(b"BEV_TEST> ")
+            terminal.until(lambda: not list(directory.glob("bev-codex.*")),
+                           "Codex diagnostics were not removed after interruption")
 
             for line in ["uncertain $(touch HELD)", "api-down $(touch HELD)"]:
                 count = len(terminal.events())

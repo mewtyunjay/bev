@@ -17,6 +17,26 @@ _bev_original_widget() {
 
 _bev_codex_path() { whence -p codex 2>/dev/null }
 
+_bev_exec_codex() (
+  local errors rc
+  errors=$(command mktemp "${TMPDIR:-/tmp}/bev-codex.XXXXXX") || return 1
+  trap 'command rm -f -- "$errors"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  trap 'exit 129' HUP
+  if "$@" 2>"$errors"; then
+    return 0
+  else
+    rc=$?
+    if [[ -s $errors ]]; then
+      command cat -- "$errors" >&2
+    else
+      builtin print -u2 -r -- "bev: Codex failed (exit $rc)"
+    fi
+    return "$rc"
+  fi
+)
+
 _bev_route_codex() {
   local prompt=$1 map=$2 key=$3 codex_path
   codex_path=$(_bev_codex_path)
@@ -24,7 +44,7 @@ _bev_route_codex() {
     zle -M 'bev: codex executable not found; input left editable'
     return 1
   fi
-  BUFFER="${(q)codex_path} exec --model gpt-5.6-luna -c model_reasoning_effort=none --skip-git-repo-check -- ${(q)prompt}"
+  BUFFER="_bev_exec_codex ${(q)codex_path} exec --model gpt-5.6-luna -c model_reasoning_effort=none --skip-git-repo-check -- ${(q)prompt}"
   _bev_original_widget "$map" "$key"
 }
 
